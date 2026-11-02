@@ -20,8 +20,17 @@ struct Lieu: Identifiable, Hashable {
     let latitude: Double
     let longitude: Double
     let localisation: String
-    
-    static var streetArts : [Lieu] = [
+
+    /// Première ligne de la localisation (adresse sans les coordonnées)
+    var adresse: String {
+        localisation.components(separatedBy: "\n").first ?? localisation
+    }
+
+    // Deux œuvres sont égales si elles ont le même identifiant
+    static func == (lhs: Lieu, rhs: Lieu) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+
+    static let streetArts : [Lieu] = [
         Lieu(
             ville: "Paris",
             nom: "Liberté Egalité Fraternité",
@@ -99,7 +108,7 @@ struct Lieu: Identifiable, Hashable {
             type: "Invaders" ,
             condition: "Très bonne",
             date: "1999",
-            auteur: "Invaders",
+            auteur: "Invader",
             latitude: 48.8595,
             longitude: 2.3515,
             localisation: """
@@ -145,105 +154,110 @@ struct Lieu: Identifiable, Hashable {
     
 }
 
-enum TypeFilter: String {
-    
-    static var allFilters: [TypeFilter] {
-        return [.Tous, .Invaders, .Mosaique, .Mural, .Stencil, .Calligraphie]
-    }
-    
+/// Types d'art utilisés pour le filtrage (V2)
+enum TypeFilter: String, CaseIterable {
     case Tous = "Tous"
     case Invaders = "Invaders"
     case Mosaique = "Mosaique"
     case Mural = "Mural"
     case Stencil = "Stencil"
     case Calligraphie = "Calligraphie"
+
+    static var allFilters: [TypeFilter] { allCases }
+
+    /// Retourne les œuvres correspondant au filtre
+    func appliquer(sur oeuvres: [Lieu]) -> [Lieu] {
+        if self == .Tous {
+            return oeuvres
+        }
+        return oeuvres.filter { $0.type == rawValue }
+    }
 }
 
-enum Content: String, CaseIterable {
+/// Bascule Liste / Carte (V3)
+enum ModeAffichage: String, CaseIterable {
     case liste = "Liste"
     case carte = "Carte"
 }
 
+/// Répertoire des auteur·ices (V4)
 struct Artiste: Identifiable {
     let id = UUID()
     let nom: String
-    let image: ImageResource
+    let image: ImageResource?      // nil = pas de photo → image de substitution
     let age: String
     let origines: String
-    let style: String
-    
-    static var artiste: [Artiste] = [
-        Artiste(
-            nom:"KAN DMV",
-            image:.kan ,
-            age:"49 ans",
-            origines:"France",
-            style:"Pointillisme"
-        ),
-        Artiste(
-            nom:"Kitsune Jolene",
-            image:.kitsuneJolene,
-            age:"34 ans",
-            origines:"Belgique",
-            style:"Mural"
-        ),
-        Artiste(
-            nom:"Aero",
-            image:.aero,
-            age:"NC",
-            origines:"France",
-            style:"Aérographe"
-        ),
-        Artiste(
-            nom:"Seth GLOBEPAINTER",
-            image:.sethGlobepainter,
-            age:"54 ans",
-            origines:"France",
-            style:"Globepainter"
-        ),
-        Artiste(
-            nom:"JDL",
-            image:.jdl,
-            age:"30 ans",
-            origines:"Pays-Bas",
-            style:"Mural"
-        ),
-        Artiste(
-            nom:"Shepard Fairey",
-            image:.shepardFairey,
-            age:"56 ans",
-            origines:"USA",
-            style:"Mural"
-        ),
+    let style: String              // type d'art de prédilection
+
+    static let artiste: [Artiste] = [
+        Artiste(nom: "KAN DMV", image: .kan, age: "49 ans", origines: "France", style: "Pointillisme / Mosaïque"),
+        Artiste(nom: "Kitsune Jolene", image: .kitsuneJolene, age: "34 ans", origines: "Belgique", style: "Mural"),
+        Artiste(nom: "Aero", image: .aero, age: "NC", origines: "France", style: "Aérographe"),
+        Artiste(nom: "Seth GLOBEPAINTER", image: .sethGlobepainter, age: "54 ans", origines: "France", style: "Mural"),
+        Artiste(nom: "JDL", image: .jdl, age: "30 ans", origines: "Pays-Bas", style: "Mural"),
+        Artiste(nom: "Shepard Fairey", image: .shepardFairey, age: "56 ans", origines: "USA", style: "Mural / Affiche"),
+        // Auteur·ices des œuvres de la liste, sans photo : une image de substitution est affichée
+        Artiste(nom: "El Seed", image: nil, age: "45 ans", origines: "France / Tunisie", style: "Calligraphie"),
+        Artiste(nom: "Invader", image: nil, age: "57 ans", origines: "France", style: "Invaders (mosaïque)"),
+        Artiste(nom: "Jef Aérosol", image: nil, age: "69 ans", origines: "France", style: "Stencil"),
+        Artiste(nom: "Manyoly", image: nil, age: "NC", origines: "France", style: "Mural"),
+        Artiste(nom: "Gorg One", image: nil, age: "NC", origines: "La Réunion", style: "Mural")
     ]
 }
 
-struct Mission: Identifiable {
-    let id = UUID()
-    let nom : String
-    
-    static var mission: [Mission] = [
-        Mission (
-            nom:"Mission 1"
-        ),
-        Mission (
-            nom:"Mission 2"
-        ),
-        Mission (
-            nom:"Mission 3"
-        ),
-        Mission (
-            nom:"Mission 4"
-        ),
-        Mission (
-            nom:"Mission 5"
-        ),
-        Mission (
-            nom:"Mission 6"
-        ),
-        Mission (
-            nom:"Mission 7"
-        )
-    ]
-}
+/// Génération automatique d'une mission (V5)
+enum Mission {
 
+    /// Génère une sélection de 3 à 5 œuvres qui respecte les règles :
+    /// 1. pas deux fois la même œuvre ;
+    /// 2. éviter deux fois le/la même auteur·ice ;
+    /// 3. au moins 2 types d'art différents.
+    static func generer(depuis oeuvres: [Lieu]) -> [Lieu] {
+        guard oeuvres.count > 3 else { return oeuvres.shuffled() }
+
+        let taille = Int.random(in: 3...min(5, oeuvres.count))
+
+        // On fait plusieurs tirages au hasard jusqu'à trouver une sélection qui respecte toutes les règles
+        for _ in 0..<100 {
+            let selection = tirage(oeuvres, taille: taille)
+            if respecteLesRegles(selection) {
+                return selection
+            }
+        }
+        // S'il n'y a pas assez d'auteur·ices différent·es, on garde au moins la règle des 2 types
+        for _ in 0..<100 {
+            let selection = tirage(oeuvres, taille: taille)
+            if nombreDeTypes(selection) >= 2 {
+                return selection
+            }
+        }
+        return tirage(oeuvres, taille: taille)
+    }
+
+    /// Tire des œuvres au hasard, en privilégiant des auteur·ices différent·es
+    private static func tirage(_ oeuvres: [Lieu], taille: Int) -> [Lieu] {
+        let melange = oeuvres.shuffled()
+        var selection: [Lieu] = []
+        var auteurs: Set<String> = []
+
+        for oeuvre in melange where selection.count < taille && !auteurs.contains(oeuvre.auteur) {
+            selection.append(oeuvre)
+            auteurs.insert(oeuvre.auteur)
+        }
+        // On complète seulement si on manque d'auteur·ices différent·es
+        for oeuvre in melange where selection.count < taille && !selection.contains(oeuvre) {
+            selection.append(oeuvre)
+        }
+        return selection
+    }
+
+    static func respecteLesRegles(_ selection: [Lieu]) -> Bool {
+        let oeuvresUniques = Set(selection.map { $0.id }).count == selection.count
+        let auteursUniques = Set(selection.map { $0.auteur }).count == selection.count
+        return oeuvresUniques && auteursUniques && nombreDeTypes(selection) >= 2
+    }
+
+    static func nombreDeTypes(_ selection: [Lieu]) -> Int {
+        Set(selection.map { $0.type }).count
+    }
+}
